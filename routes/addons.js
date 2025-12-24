@@ -37,5 +37,28 @@ router.post("/", authRequired, async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+// GET addons for a walker
+router.get("/walker/:walkerId", async (req, res) => {
+  const walkerId = Number(req.params.walkerId);
+
+  if (!Number.isFinite(walkerId)) {
+    return res.status(400).json({ error: "Invalid walker id" });
+  }
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, name, price
+       FROM walker_addons
+       WHERE walker_id = ?
+       ORDER BY name`,
+      [walkerId]
+    );
+
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 
 module.exports = router;
