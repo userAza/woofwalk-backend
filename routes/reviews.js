@@ -14,11 +14,11 @@ router.post("/", authRequired, async (req, res) => {
   try {
     const [[booking]] = await pool.query(
       `
-      SELECT id, walker_id
-      FROM bookings
-      WHERE id = ?
-        AND user_id = ?
-        AND status = 'done'
+      SELECT b.id, b.walker_id
+      FROM bookings b
+      WHERE b.id = ?
+        AND b.user_id = ?
+        AND b.status = 'done'
       `,
       [booking_id, req.user.id]
     );
@@ -27,16 +27,14 @@ router.post("/", authRequired, async (req, res) => {
       return res.status(403).json({ error: "Not allowed" });
     }
 
-    const [[existing]] = await pool.query(
-        `SELECT id FROM reviews WHERE booking_id = ?`,
-        [booking_id]
+    const [[exists]] = await pool.query(
+      "SELECT id FROM reviews WHERE booking_id = ?",
+      [booking_id]
     );
 
-    if (existing) {
-    return res.status(409).json({ error: "Review already exists for this booking" });
+    if (exists) {
+      return res.status(409).json({ error: "Already reviewed" });
     }
-
-    
 
     await pool.query(
       `
@@ -48,19 +46,25 @@ router.post("/", authRequired, async (req, res) => {
 
     res.status(201).json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: String(e.message || e) });
   }
 });
 
-// GET /api/reviews/walker/:walkerId
+// GET reviews + average rating for a walker
 router.get("/walker/:walkerId", async (req, res) => {
   const walkerId = Number(req.params.walkerId);
-
   if (!Number.isFinite(walkerId)) {
     return res.status(400).json({ error: "Invalid walker id" });
   }
 
   try {
+    const [[avg]] = await pool.query(
+      `SELECT COALESCE(AVG(rating), 0) AS average_rating
+       FROM reviews
+       WHERE walker_id = ?`,
+      [walkerId]
+    );
+
     const [rows] = await pool.query(
       `
       SELECT
@@ -76,17 +80,12 @@ router.get("/walker/:walkerId", async (req, res) => {
       [walkerId]
     );
 
-    const [[avg]] = await pool.query(
-      `SELECT AVG(rating) AS average FROM reviews WHERE walker_id = ?`,
-      [walkerId]
-    );
-
     res.json({
-      average_rating: Number(avg.average) || 0,
+      average_rating: Number(avg.average_rating),
       reviews: rows
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: String(e.message || e) });
   }
 });
 
