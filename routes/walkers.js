@@ -19,7 +19,7 @@ router.get("/search", async (req, res) => {
       `
       SELECT DISTINCT w.*
       FROM walkers w
-      JOIN walker_availability a ON a.walker_id = w.user_id
+      JOIN walker_availability a ON a.walker_id = w.id
       WHERE w.is_banned = 0
         AND w.location = ?
         AND w.max_dogs_per_walk >= ?
@@ -151,5 +151,27 @@ router.get("/:id/reviews", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
+router.get("/:id/availability", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const [rows] = await pool.query(
+      `
+      SELECT id, date, start_time, end_time
+      FROM walker_availability
+      WHERE walker_id = ?
+      ORDER BY date, start_time
+      `,
+      [id]
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load availability" });
+  }
+});
+
 
 module.exports = router;

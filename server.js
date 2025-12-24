@@ -7,6 +7,13 @@ const bookingsRoutes = require("./routes/bookings");
 const authRoutes = require("./routes/auth");
 const pool = require("./db");
 const walkersRoutes = require("./routes/walkers");
+const profilesRoutes = require("./routes/profiles");
+const reviewsRoutes = require("./routes/reviews");
+const addonsRoutes = require("./routes/addons");
+const vetsRoutes = require("./routes/vets");
+const subscriptionsRoutes = require("./routes/subscriptions");
+
+
 
 dotenv.config();
 
@@ -19,6 +26,12 @@ app.use("/api/dogs", dogsRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/bookings", bookingsRoutes);
 app.use("/api/walkers", walkersRoutes);
+app.use("/api/profiles", profilesRoutes);
+app.use("/api/reviews", reviewsRoutes);
+app.use("/api/addons", addonsRoutes);
+app.use("/api/vets", vetsRoutes);
+app.use("/api/subscriptions", subscriptionsRoutes);
+
 
 
 app.get("/api/health", (req, res) => {

@@ -155,44 +155,28 @@ router.patch("/admin/:id/status", authRequired, adminOnly, async (req, res) => {
   const bookingId = Number(req.params.id);
   const { status, walker_id } = req.body;
 
-  if (!Number.isFinite(bookingId)) {
-    return res.status(400).json({ error: "Invalid id" });
-  }
+  if (!Number.isFinite(bookingId)) return res.status(400).json({ error: "Invalid id" });
 
-  const allowedStatuses = ["pending", "accepted", "done", "cancelled"];
-  if (!allowedStatuses.includes(status)) {
-    return res.status(400).json({ error: "Invalid status" });
-  }
+  const allowedStatuses = ["pending", "accepted", "done", "cancelled", "declined"];
+  if (!allowedStatuses.includes(status)) return res.status(400).json({ error: "Invalid status" });
 
   try {
     let basePrice = null;
     let extraDogsFee = null;
-    let addonsTotal = null;
-    let discountAmount = null;
+    let addonsTotal = 0;
+    let discountAmount = 0;
     let totalPrice = null;
 
-    // Get booking owner
-    const [[booking]] = await pool.query(
-      "SELECT user_id FROM bookings WHERE id = ?",
-      [bookingId]
-    );
-    if (!booking) {
-      return res.status(404).json({ error: "Booking not found" });
-    }
-
-    // Sum addons
     const [[addonsSum]] = await pool.query(
       `SELECT COALESCE(SUM(price_snapshot), 0) AS total
        FROM booking_addons
        WHERE booking_id = ?`,
       [bookingId]
     );
-    addonsTotal = Number(addonsSum.total) || 0;
+    addonsTotal = Number(addonsSum?.total) || 0;
 
     if (status === "accepted") {
-      if (!walker_id) {
-        return res.status(400).json({ error: "walker_id is required when accepting" });
-      }
+      if (!walker_id) return res.status(400).json({ error: "walker_id is required when accepting" });
 
       const [[walker]] = await pool.query(
         `SELECT price_per_30min, extra_dog_fee_per_dog, max_dogs_per_walk
@@ -200,35 +184,30 @@ router.patch("/admin/:id/status", authRequired, adminOnly, async (req, res) => {
          WHERE id = ?`,
         [walker_id]
       );
-      if (!walker) {
-        return res.status(400).json({ error: "Walker not found" });
-      }
+      if (!walker) return res.status(400).json({ error: "Walker not found" });
 
       const [[count]] = await pool.query(
-        "SELECT COUNT(*) AS total FROM booking_dogs WHERE booking_id = ?",
+        `SELECT COUNT(*) AS total FROM booking_dogs WHERE booking_id = ?`,
         [bookingId]
       );
-
-      const dogCount = Number(count.total) || 0;
+      const dogCount = Number(count?.total) || 0;
 
       basePrice = Number(walker.price_per_30min) || 0;
 
       const includedDogs = Number(walker.max_dogs_per_walk) || 0;
       const extraFeePerDog = Number(walker.extra_dog_fee_per_dog) || 0;
+      extraDogsFee = Math.max(0, dogCount - includedDogs) * extraFeePerDog;
 
-      const extraDogs = Math.max(0, dogCount - includedDogs);
-      extraDogsFee = extraDogs * extraFeePerDog;
-
-      // Subscription discount (BOOKING USER, not admin)
-      const [[subscription]] = await pool.query(
-        `SELECT discount_percent
-         FROM user_subscriptions
-         WHERE user_id = ?
-           AND active_until > NOW()`,
-        [booking.user_id]
+      const [[sub]] = await pool.query(
+        `
+        SELECT discount_percent
+        FROM user_subscriptions
+        WHERE user_id = (SELECT user_id FROM bookings WHERE id = ?)
+          AND active_until > NOW()
+        `,
+        [bookingId]
       );
-
-      const discountPercent = subscription ? Number(subscription.discount_percent) : 0;
+      const discountPercent = Number(sub?.discount_percent) || 0;
       discountAmount = (basePrice * discountPercent) / 100;
 
       totalPrice = basePrice - discountAmount + extraDogsFee + addonsTotal;
@@ -246,27 +225,17 @@ router.patch("/admin/:id/status", authRequired, adminOnly, async (req, res) => {
           total_price = ?
       WHERE id = ?
       `,
-      [
-        status,
-        walker_id || null,
-        basePrice,
-        extraDogsFee,
-        addonsTotal,
-        discountAmount,
-        totalPrice,
-        bookingId
-      ]
+      [status, walker_id || null, basePrice, extraDogsFee, addonsTotal, discountAmount, totalPrice, bookingId]
     );
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "Booking not found" });
-    }
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Booking not found" });
 
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
 });
+
 
 
 
