@@ -168,9 +168,19 @@ router.patch("/admin/:id/status", authRequired, adminOnly, async (req, res) => {
     let basePrice = null;
     let extraDogsFee = null;
     let addonsTotal = null;
+    let discountAmount = null;
     let totalPrice = null;
 
-    // SUM ADDONS (always safe)
+    // Get booking owner
+    const [[booking]] = await pool.query(
+      "SELECT user_id FROM bookings WHERE id = ?",
+      [bookingId]
+    );
+    if (!booking) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
+    // Sum addons
     const [[addonsSum]] = await pool.query(
       `SELECT COALESCE(SUM(price_snapshot), 0) AS total
        FROM booking_addons
@@ -179,7 +189,6 @@ router.patch("/admin/:id/status", authRequired, adminOnly, async (req, res) => {
     );
     addonsTotal = Number(addonsSum.total) || 0;
 
-    // ONLY when accepting
     if (status === "accepted") {
       if (!walker_id) {
         return res.status(400).json({ error: "walker_id is required when accepting" });
@@ -191,13 +200,12 @@ router.patch("/admin/:id/status", authRequired, adminOnly, async (req, res) => {
          WHERE id = ?`,
         [walker_id]
       );
-
       if (!walker) {
         return res.status(400).json({ error: "Walker not found" });
       }
 
       const [[count]] = await pool.query(
-        `SELECT COUNT(*) AS total FROM booking_dogs WHERE booking_id = ?`,
+        "SELECT COUNT(*) AS total FROM booking_dogs WHERE booking_id = ?",
         [bookingId]
       );
 
@@ -211,7 +219,19 @@ router.patch("/admin/:id/status", authRequired, adminOnly, async (req, res) => {
       const extraDogs = Math.max(0, dogCount - includedDogs);
       extraDogsFee = extraDogs * extraFeePerDog;
 
-      totalPrice = basePrice + extraDogsFee + addonsTotal;
+      // Subscription discount (BOOKING USER, not admin)
+      const [[subscription]] = await pool.query(
+        `SELECT discount_percent
+         FROM user_subscriptions
+         WHERE user_id = ?
+           AND active_until > NOW()`,
+        [booking.user_id]
+      );
+
+      const discountPercent = subscription ? Number(subscription.discount_percent) : 0;
+      discountAmount = (basePrice * discountPercent) / 100;
+
+      totalPrice = basePrice - discountAmount + extraDogsFee + addonsTotal;
     }
 
     const [result] = await pool.query(
@@ -222,10 +242,20 @@ router.patch("/admin/:id/status", authRequired, adminOnly, async (req, res) => {
           base_price = ?,
           extra_dogs_fee = ?,
           addons_total = ?,
+          discount_amount = ?,
           total_price = ?
       WHERE id = ?
       `,
-      [status, walker_id || null, basePrice, extraDogsFee, addonsTotal, totalPrice, bookingId]
+      [
+        status,
+        walker_id || null,
+        basePrice,
+        extraDogsFee,
+        addonsTotal,
+        discountAmount,
+        totalPrice,
+        bookingId
+      ]
     );
 
     if (result.affectedRows === 0) {
@@ -237,6 +267,7 @@ router.patch("/admin/:id/status", authRequired, adminOnly, async (req, res) => {
     res.status(500).json({ error: String(e.message || e) });
   }
 });
+
 
 
 // GET /api/bookings/walker/:walkerId/availability?date=YYYY-MM-DD
