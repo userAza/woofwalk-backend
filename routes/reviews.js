@@ -27,6 +27,17 @@ router.post("/", authRequired, async (req, res) => {
       return res.status(403).json({ error: "Not allowed" });
     }
 
+    const [[existing]] = await pool.query(
+        `SELECT id FROM reviews WHERE booking_id = ?`,
+        [booking_id]
+    );
+
+    if (existing) {
+    return res.status(409).json({ error: "Review already exists for this booking" });
+    }
+
+    
+
     await pool.query(
       `
       INSERT INTO reviews (booking_id, walker_id, user_id, rating)
