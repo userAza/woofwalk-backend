@@ -41,4 +41,43 @@ router.post("/", authRequired, async (req, res) => {
   }
 });
 
+// GET /api/reviews/walker/:walkerId
+router.get("/walker/:walkerId", async (req, res) => {
+  const walkerId = Number(req.params.walkerId);
+
+  if (!Number.isFinite(walkerId)) {
+    return res.status(400).json({ error: "Invalid walker id" });
+  }
+
+  try {
+    const [rows] = await pool.query(
+      `
+      SELECT
+        r.id,
+        r.rating,
+        r.created_at,
+        u.name AS user_name
+      FROM reviews r
+      JOIN users u ON u.id = r.user_id
+      WHERE r.walker_id = ?
+      ORDER BY r.created_at DESC
+      `,
+      [walkerId]
+    );
+
+    const [[avg]] = await pool.query(
+      `SELECT AVG(rating) AS average FROM reviews WHERE walker_id = ?`,
+      [walkerId]
+    );
+
+    res.json({
+      average_rating: Number(avg.average) || 0,
+      reviews: rows
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
 module.exports = router;
