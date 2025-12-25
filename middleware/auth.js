@@ -2,29 +2,22 @@ const jwt = require("jsonwebtoken");
 
 function authRequired(req, res, next) {
   const header = req.headers.authorization;
+  if (!header) return res.status(401).json({ error: "No token" });
 
-  if (!header) {
-    return res.status(401).json({ error: "No token" });
-  }
-
-  const parts = header.split(" ");
-
-  if (parts.length !== 2 || parts[0] !== "Bearer") {
-    return res.status(401).json({ error: "Invalid token format" });
-  }
+  const token = header.split(" ")[1];
 
   try {
-    const decoded = jwt.verify(parts[1], process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
     next();
   } catch {
-    return res.status(401).json({ error: "Invalid token" });
+    res.status(401).json({ error: "Invalid token" });
   }
 }
 
 function adminOnly(req, res, next) {
   if (req.user.role !== "admin") {
-    return res.status(403).json({ error: "Forbidden" });
+    return res.status(403).json({ error: "Admin only" });
   }
   next();
 }
