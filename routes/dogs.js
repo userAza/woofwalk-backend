@@ -57,9 +57,10 @@ router.delete("/:id", authRequired, async (req, res) => {
 
     // block delete if bookings exist
     const [bookings] = await pool.query(
-      "SELECT id FROM bookings WHERE dog_id = ? LIMIT 1",
+      "SELECT 1 FROM booking_dogs WHERE dog_id = ? LIMIT 1",
       [dogId]
     );
+
     if (bookings.length > 0) {
       return res.status(409).json({
         error: "Dog has bookings. Cancel/delete bookings first."
@@ -72,5 +73,39 @@ router.delete("/:id", authRequired, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
+// PATCH update dog (only owner)
+router.patch("/:id", authRequired, async (req, res) => {
+  const dogId = Number(req.params.id);
+  const { name, breed, age, notes } = req.body;
+
+  if (!Number.isFinite(dogId)) {
+    return res.status(400).json({ error: "Invalid id" });
+  }
+
+  if (!name || !breed || age === undefined) {
+    return res.status(400).json({ error: "Missing fields" });
+  }
+
+  try {
+    const [result] = await pool.query(
+      `
+      UPDATE dogs
+      SET name = ?, breed = ?, age = ?, notes = ?
+      WHERE id = ? AND user_id = ?
+      `,
+      [name, breed, Number(age), notes || null, dogId, req.user.id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Dog not found" });
+    }
+
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 
 module.exports = router;

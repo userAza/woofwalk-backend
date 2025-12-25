@@ -38,4 +38,23 @@ router.put("/", authRequired, async (req, res) => {
   }
 });
 
+router.patch("/me", authRequired, async (req, res) => {
+  const { name, email } = req.body;
+
+  if (!name || !email) {
+    return res.status(400).json({ error: "Name and email required" });
+  }
+
+  await pool.query(
+    `
+    UPDATE users
+    SET name = ?, email = ?
+    WHERE id = ?
+    `,
+    [name, email, req.user.id]
+  );
+
+  res.json({ success: true });
+});
+
 module.exports = router;
