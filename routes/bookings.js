@@ -18,6 +18,8 @@ router.get("/", authRequired, async (req, res) => {
     SELECT 
       b.id,
       b.date,
+      b.start_time,
+      b.end_time,
       b.status,
       b.created_at,
       w.name AS walker_name,
@@ -40,9 +42,16 @@ router.get("/", authRequired, async (req, res) => {
    USER – CREATE BOOKING
 ====================== */
 router.post("/", authRequired, async (req, res) => {
-  const { walker_id, date, dog_ids, addon_ids } = req.body;
+  const { walker_id, date, start_time, end_time, dog_ids, addon_ids } = req.body;
 
-  if (!walker_id || !date || !Array.isArray(dog_ids) || dog_ids.length === 0) {
+  if (
+    !walker_id ||
+    !date ||
+    !start_time ||
+    !end_time ||
+    !Array.isArray(dog_ids) ||
+    dog_ids.length === 0
+  ) {
     return res.status(400).json({ error: "Missing or invalid fields" });
   }
 
@@ -67,24 +76,62 @@ router.post("/", authRequired, async (req, res) => {
 
     // validate dogs
     const [dogs] = await pool.query(
-      `SELECT id FROM dogs WHERE user_id = ? AND id IN (${dog_ids.map(() => "?").join(",")})`,
+      `SELECT id FROM dogs WHERE user_id = ? AND id IN (${dog_ids
+        .map(() => "?")
+        .join(",")})`,
       [req.user.id, ...dog_ids]
     );
     if (dogs.length !== dog_ids.length) {
       return res.status(403).json({ error: "One or more dogs are not yours" });
     }
 
+    // check availability window
+    const [[slot]] = await pool.query(
+      `
+      SELECT 1
+      FROM walker_availability
+      WHERE walker_id = ?
+        AND date = ?
+        AND start_time <= ?
+        AND end_time >= ?
+      `,
+      [walker_id, date, start_time, end_time]
+    );
+
+    if (!slot) {
+      return res.status(400).json({ error: "Time outside availability" });
+    }
+
+    // prevent overlapping accepted bookings
+    const [[conflict]] = await pool.query(
+      `
+      SELECT 1
+      FROM bookings
+      WHERE walker_id = ?
+        AND date = ?
+        AND status = 'accepted'
+        AND NOT (end_time <= ? OR start_time >= ?)
+      `,
+      [walker_id, date, start_time, end_time]
+    );
+
+    if (conflict) {
+      return res.status(400).json({ error: "Time slot unavailable" });
+    }
+
     const [result] = await pool.query(
-      `INSERT INTO bookings (user_id, walker_id, date, status)
-       VALUES (?, ?, ?, 'pending')`,
-      [req.user.id, walker_id, date]
+      `
+      INSERT INTO bookings (user_id, walker_id, date, start_time, end_time, status)
+      VALUES (?, ?, ?, ?, ?, 'pending')
+      `,
+      [req.user.id, walker_id, date, start_time, end_time]
     );
 
     const bookingId = result.insertId;
 
     await pool.query(
       `INSERT INTO booking_dogs (booking_id, dog_id) VALUES ?`,
-      [dog_ids.map(dogId => [bookingId, dogId])]
+      [dog_ids.map((d) => [bookingId, d])]
     );
 
     // addons (optional)
@@ -100,9 +147,11 @@ router.post("/", authRequired, async (req, res) => {
       }
 
       await pool.query(
-        `INSERT INTO booking_addons (booking_id, addon_id, price_snapshot)
-         VALUES ?`,
-        [addons.map(a => [bookingId, a.id, a.price])]
+        `
+        INSERT INTO booking_addons (booking_id, addon_id, price_snapshot)
+        VALUES ?
+        `,
+        [addons.map((a) => [bookingId, a.id, a.price])]
       );
     }
 
@@ -120,9 +169,11 @@ router.patch("/:id/cancel", authRequired, async (req, res) => {
   if (!bookingId) return res.status(400).json({ error: "Invalid id" });
 
   const [result] = await pool.query(
-    `UPDATE bookings
-     SET status = 'cancelled'
-     WHERE id = ? AND user_id = ?`,
+    `
+    UPDATE bookings
+    SET status = 'cancelled'
+    WHERE id = ? AND user_id = ?
+    `,
     [bookingId, req.user.id]
   );
 
@@ -146,6 +197,8 @@ router.get("/walker", authRequired, async (req, res) => {
     SELECT
       b.id,
       b.date,
+      b.start_time,
+      b.end_time,
       b.status,
       b.created_at,
       u.name AS user_name,

@@ -3,17 +3,13 @@ const pool = require("../db");
 
 const router = express.Router();
 
-/**
- * ==============================
- * PUBLIC — SEARCH WALKERS
- * GET /api/walkers/search
- * ==============================
- * ?location=&date=&dogs=
- */
+/* ==============================
+   PUBLIC — SEARCH WALKERS
+============================== */
 router.get("/search", async (req, res) => {
-  const { location, date, dogs } = req.query;
+  const { location, date, start_time, end_time, dogs } = req.query;
 
-  if (!location || !date || !dogs) {
+  if (!location || !date || !start_time || !end_time || !dogs) {
     return res.status(400).json({ error: "Missing filters" });
   }
 
@@ -23,26 +19,41 @@ router.get("/search", async (req, res) => {
       SELECT
         w.id,
         w.name,
-        w.bio,
         w.location,
-        w.price_per_30min,
-        w.max_dogs_per_walk,
-        w.extra_dog_fee_per_dog
+        w.price_per_30min
       FROM walkers w
       WHERE
         w.is_banned = 0
         AND LOWER(w.location) LIKE LOWER(?)
         AND w.max_dogs_per_walk >= ?
+        AND EXISTS (
+          SELECT 1
+          FROM walker_availability wa
+          WHERE wa.walker_id = w.id
+            AND wa.date = ?
+            AND wa.start_time <= ?
+            AND wa.end_time >= ?
+        )
         AND NOT EXISTS (
           SELECT 1
           FROM bookings b
           WHERE b.walker_id = w.id
             AND b.date = ?
             AND b.status = 'accepted'
+            AND NOT (b.end_time <= ? OR b.start_time >= ?)
         )
       ORDER BY w.created_at DESC
       `,
-      [`%${location}%`, Number(dogs), date]
+      [
+        `%${location}%`,
+        Number(dogs),
+        date,
+        start_time,
+        end_time,
+        date,
+        start_time,
+        end_time
+      ]
     );
 
     res.json(rows);
@@ -51,15 +62,11 @@ router.get("/search", async (req, res) => {
   }
 });
 
-/**
- * ==============================
- * PUBLIC — WALKER PROFILE
- * GET /api/walkers/:id
- * ==============================
- */
+/* ==============================
+   PUBLIC — WALKER PROFILE
+============================== */
 router.get("/:id", async (req, res) => {
   const walkerId = Number(req.params.id);
-
   if (!Number.isFinite(walkerId)) {
     return res.status(400).json({ error: "Invalid walker id" });
   }
@@ -74,63 +81,32 @@ router.get("/:id", async (req, res) => {
       return res.status(404).json({ error: "Walker not found" });
     }
 
-    const [addons] = await pool.query(
-      "SELECT id, name, price FROM walker_addons WHERE walker_id = ?",
-      [walkerId]
-    );
-
-    const [[rating]] = await pool.query(
-      `
-      SELECT 
-        COUNT(*) AS count,
-        AVG(rating) AS avg_rating
-      FROM reviews
-      WHERE walker_id = ?
-      `,
-      [walkerId]
-    );
-
-    res.json({
-      walker,
-      addons,
-      rating: {
-        count: rating.count,
-        avg: rating.avg_rating ? Number(rating.avg_rating).toFixed(1) : null
-      }
-    });
-  } catch (e) {
-    res.status(500).json({ error: String(e.message || e) });
+    res.json(walker);
+  } catch {
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-/**
- * ==============================
- * PUBLIC — WALKER AVAILABILITY
- * GET /api/walkers/:id/availability
- * ==============================
- */
+/* ==============================
+   PUBLIC — WALKER AVAILABILITY (RESTORED)
+============================== */
 router.get("/:id/availability", async (req, res) => {
   const walkerId = Number(req.params.id);
-
   if (!Number.isFinite(walkerId)) {
     return res.status(400).json({ error: "Invalid walker id" });
   }
 
-  try {
-    const [rows] = await pool.query(
-      `
-      SELECT date, start_time, end_time
-      FROM walker_availability
-      WHERE walker_id = ?
-      ORDER BY date, start_time
-      `,
-      [walkerId]
-    );
+  const [rows] = await pool.query(
+    `
+    SELECT date, start_time, end_time
+    FROM walker_availability
+    WHERE walker_id = ?
+    ORDER BY date, start_time
+    `,
+    [walkerId]
+  );
 
-    res.json(rows);
-  } catch (e) {
-    res.status(500).json({ error: "Failed to load availability" });
-  }
+  res.json(rows);
 });
 
 module.exports = router;
