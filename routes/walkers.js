@@ -66,26 +66,36 @@ router.get("/search", async (req, res) => {
    PUBLIC — WALKER PROFILE
 ============================== */
 router.get("/:id", async (req, res) => {
-  const walkerId = Number(req.params.id);
-  if (!Number.isFinite(walkerId)) {
-    return res.status(400).json({ error: "Invalid walker id" });
+  const walkerId = req.params.id;
+
+  const [[walker]] = await pool.query(
+    "SELECT * FROM walkers WHERE id = ?",
+    [walkerId]
+  );
+
+  if (!walker) {
+    return res.status(404).json({ error: "Walker not found" });
   }
 
-  try {
-    const [[walker]] = await pool.query(
-      "SELECT * FROM walkers WHERE id = ? AND is_banned = 0",
-      [walkerId]
-    );
+  const [availability] = await pool.query(
+    `
+    SELECT 
+      DATE_FORMAT(date, '%Y-%m-%d') as date,
+      TIME_FORMAT(start_time, '%H:%i:%s') as start_time,
+      TIME_FORMAT(end_time, '%H:%i:%s') as end_time
+    FROM walker_availability
+    WHERE walker_id = ?
+    ORDER BY date, start_time
+    `,
+    [walkerId]
+  );
 
-    if (!walker) {
-      return res.status(404).json({ error: "Walker not found" });
-    }
-
-    res.json(walker);
-  } catch {
-    res.status(500).json({ error: "Server error" });
-  }
+  res.json({
+    walker,
+    availability
+  });
 });
+
 
 /* ==============================
    PUBLIC — WALKER AVAILABILITY (RESTORED)
@@ -98,7 +108,10 @@ router.get("/:id/availability", async (req, res) => {
 
   const [rows] = await pool.query(
     `
-    SELECT date, start_time, end_time
+    SELECT 
+      DATE_FORMAT(date, '%Y-%m-%d') as date,
+      TIME_FORMAT(start_time, '%H:%i:%s') as start_time,
+      TIME_FORMAT(end_time, '%H:%i:%s') as end_time
     FROM walker_availability
     WHERE walker_id = ?
     ORDER BY date, start_time
