@@ -24,16 +24,17 @@ router.get("/", authRequired, async (req, res) => {
       b.created_at,
       w.name AS walker_name,
       GROUP_CONCAT(DISTINCT d.name SEPARATOR ', ') AS dogs,
+      COALESCE(SUM(ba.price_snapshot), 0) + w.price_per_30min AS total_price,
       GROUP_CONCAT(
-        DISTINCT CONCAT(a.name, ':', ba.price_snapshot)
-        SEPARATOR '|'
+        DISTINCT CONCAT(wa.name, ' (€', ba.price_snapshot, ')')
+        SEPARATOR ', '
       ) AS addons
     FROM bookings b
-    LEFT JOIN walkers w ON w.id = b.walker_id
+    JOIN walkers w ON w.id = b.walker_id
     LEFT JOIN booking_dogs bd ON bd.booking_id = b.id
     LEFT JOIN dogs d ON d.id = bd.dog_id
     LEFT JOIN booking_addons ba ON ba.booking_id = b.id
-    LEFT JOIN walker_addons a ON a.id = ba.addon_id
+    LEFT JOIN walker_addons wa ON wa.id = ba.addon_id
     WHERE b.user_id = ?
     GROUP BY b.id
     ORDER BY b.created_at DESC
@@ -43,6 +44,7 @@ router.get("/", authRequired, async (req, res) => {
 
   res.json(rows);
 });
+
 
 
 /* ======================
