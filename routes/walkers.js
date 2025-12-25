@@ -7,9 +7,9 @@ const router = express.Router();
    PUBLIC — SEARCH WALKERS
 ============================== */
 router.get("/search", async (req, res) => {
-  const { location, date, start_time, end_time, dogs } = req.query;
+  const { location, dogs, date, start_time, end_time } = req.query;
 
-  if (!location || !date || !start_time || !end_time || !dogs) {
+  if (!location || !dogs || !date || !start_time || !end_time) {
     return res.status(400).json({ error: "Missing filters" });
   }
 
@@ -20,8 +20,12 @@ router.get("/search", async (req, res) => {
         w.id,
         w.name,
         w.location,
-        w.price_per_30min
+        w.price_per_30min,
+        w.max_dogs_per_walk,
+        COALESCE(AVG(r.rating), 0) AS average_rating,
+        COUNT(r.id) AS review_count
       FROM walkers w
+      LEFT JOIN reviews r ON r.walker_id = w.id
       WHERE
         w.is_banned = 0
         AND LOWER(w.location) LIKE LOWER(?)
@@ -42,6 +46,7 @@ router.get("/search", async (req, res) => {
             AND b.status = 'accepted'
             AND NOT (b.end_time <= ? OR b.start_time >= ?)
         )
+      GROUP BY w.id
       ORDER BY w.created_at DESC
       `,
       [
@@ -58,6 +63,7 @@ router.get("/search", async (req, res) => {
 
     res.json(rows);
   } catch (e) {
+    console.error(e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -66,39 +72,52 @@ router.get("/search", async (req, res) => {
    PUBLIC — WALKER PROFILE
 ============================== */
 router.get("/:id", async (req, res) => {
-  const walkerId = req.params.id;
-
-  const [[walker]] = await pool.query(
-    "SELECT * FROM walkers WHERE id = ?",
-    [walkerId]
-  );
-
-  if (!walker) {
-    return res.status(404).json({ error: "Walker not found" });
+  const walkerId = Number(req.params.id);
+  if (!Number.isFinite(walkerId)) {
+    return res.status(400).json({ error: "Invalid walker id" });
   }
 
-  const [availability] = await pool.query(
-    `
-    SELECT 
-      DATE_FORMAT(date, '%Y-%m-%d') as date,
-      TIME_FORMAT(start_time, '%H:%i:%s') as start_time,
-      TIME_FORMAT(end_time, '%H:%i:%s') as end_time
-    FROM walker_availability
-    WHERE walker_id = ?
-    ORDER BY date, start_time
-    `,
-    [walkerId]
-  );
+  try {
+    const [[walker]] = await pool.query(
+      `
+      SELECT
+        w.*,
+        COALESCE(AVG(r.rating), 0) AS average_rating,
+        COUNT(r.id) AS review_count
+      FROM walkers w
+      LEFT JOIN reviews r ON r.walker_id = w.id
+      WHERE w.id = ?
+      GROUP BY w.id
+      `,
+      [walkerId]
+    );
 
-  res.json({
-    walker,
-    availability
-  });
+    if (!walker) {
+      return res.status(404).json({ error: "Walker not found" });
+    }
+
+    const [availability] = await pool.query(
+      `
+      SELECT
+        DATE_FORMAT(date, '%Y-%m-%d') AS date,
+        TIME_FORMAT(start_time, '%H:%i:%s') AS start_time,
+        TIME_FORMAT(end_time, '%H:%i:%s') AS end_time
+      FROM walker_availability
+      WHERE walker_id = ?
+      ORDER BY date, start_time
+      `,
+      [walkerId]
+    );
+
+    res.json({ walker, availability });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
-
 /* ==============================
-   PUBLIC — WALKER AVAILABILITY (RESTORED)
+   PUBLIC — WALKER AVAILABILITY
 ============================== */
 router.get("/:id/availability", async (req, res) => {
   const walkerId = Number(req.params.id);
@@ -106,20 +125,25 @@ router.get("/:id/availability", async (req, res) => {
     return res.status(400).json({ error: "Invalid walker id" });
   }
 
-  const [rows] = await pool.query(
-    `
-    SELECT 
-      DATE_FORMAT(date, '%Y-%m-%d') as date,
-      TIME_FORMAT(start_time, '%H:%i:%s') as start_time,
-      TIME_FORMAT(end_time, '%H:%i:%s') as end_time
-    FROM walker_availability
-    WHERE walker_id = ?
-    ORDER BY date, start_time
-    `,
-    [walkerId]
-  );
+  try {
+    const [rows] = await pool.query(
+      `
+      SELECT
+        DATE_FORMAT(date, '%Y-%m-%d') AS date,
+        TIME_FORMAT(start_time, '%H:%i:%s') AS start_time,
+        TIME_FORMAT(end_time, '%H:%i:%s') AS end_time
+      FROM walker_availability
+      WHERE walker_id = ?
+      ORDER BY date, start_time
+      `,
+      [walkerId]
+    );
 
-  res.json(rows);
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 module.exports = router;

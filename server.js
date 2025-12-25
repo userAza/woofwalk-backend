@@ -13,6 +13,7 @@ const addonsRoutes = require("./routes/addons");
 const vetsRoutes = require("./routes/vets");
 const subscriptionsRoutes = require("./routes/subscriptions");
 const adminRoutes = require("./routes/admin");
+const reviewsRouter = require("./routes/reviews");
 
 
 
@@ -33,6 +34,7 @@ app.use("/api/addons", addonsRoutes);
 app.use("/api/vets", vetsRoutes);
 app.use("/api/subscriptions", subscriptionsRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/reviews", reviewsRouter);
 
 
 

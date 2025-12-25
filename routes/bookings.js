@@ -28,13 +28,18 @@ router.get("/", authRequired, async (req, res) => {
       GROUP_CONCAT(
         DISTINCT CONCAT(wa.name, ' (€', ba.price_snapshot, ')')
         SEPARATOR ', '
-      ) AS addons
+      ) AS addons,
+      CASE
+        WHEN r.id IS NULL THEN 0
+        ELSE 1
+      END AS reviewed
     FROM bookings b
     JOIN walkers w ON w.id = b.walker_id
     LEFT JOIN booking_dogs bd ON bd.booking_id = b.id
     LEFT JOIN dogs d ON d.id = bd.dog_id
     LEFT JOIN booking_addons ba ON ba.booking_id = b.id
     LEFT JOIN walker_addons wa ON wa.id = ba.addon_id
+    LEFT JOIN reviews r ON r.booking_id = b.id
     WHERE b.user_id = ?
     GROUP BY b.id
     ORDER BY b.created_at DESC
@@ -44,8 +49,6 @@ router.get("/", authRequired, async (req, res) => {
 
   res.json(rows);
 });
-
-
 
 /* ======================
    USER – CREATE BOOKING
@@ -125,7 +128,7 @@ router.post("/", authRequired, async (req, res) => {
     );
 
     if (conflict) {
-      return res.status(400).json({ error: "Time slot unavailable" });
+      return res.status(400).json({ error: "Time slot already booked" });
     }
 
     const [result] = await pool.query(
