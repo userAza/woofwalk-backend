@@ -4,41 +4,58 @@ const pool = require("../db");
 const router = express.Router();
 
 /**
+ * ==============================
+ * PUBLIC — SEARCH WALKERS
  * GET /api/walkers/search
- * ?location=&date=&start_time=&end_time=&dogs=
+ * ==============================
+ * ?location=&date=&dogs=
  */
 router.get("/search", async (req, res) => {
-  const { location, date, start_time, end_time, dogs } = req.query;
+  const { location, date, dogs } = req.query;
 
-  if (!location || !date || !start_time || !end_time || !dogs) {
-    return res.status(400).json({ error: "Missing query params" });
+  if (!location || !date || !dogs) {
+    return res.status(400).json({ error: "Missing filters" });
   }
 
   try {
     const [rows] = await pool.query(
       `
-      SELECT DISTINCT w.*
+      SELECT
+        w.id,
+        w.name,
+        w.bio,
+        w.location,
+        w.price_per_30min,
+        w.max_dogs_per_walk,
+        w.extra_dog_fee_per_dog
       FROM walkers w
-      JOIN walker_availability a ON a.walker_id = w.id
-      WHERE w.is_banned = 0
-        AND w.location = ?
+      WHERE
+        w.is_banned = 0
+        AND LOWER(w.location) LIKE LOWER(?)
         AND w.max_dogs_per_walk >= ?
-        AND a.date = ?
-        AND a.start_time <= ?
-        AND a.end_time >= ?
+        AND NOT EXISTS (
+          SELECT 1
+          FROM bookings b
+          WHERE b.walker_id = w.id
+            AND b.date = ?
+            AND b.status = 'accepted'
+        )
+      ORDER BY w.created_at DESC
       `,
-      [location, Number(dogs), date, start_time, end_time]
+      [`%${location}%`, Number(dogs), date]
     );
 
     res.json(rows);
   } catch (e) {
-    res.status(500).json({ error: String(e.message || e) });
+    res.status(500).json({ error: e.message });
   }
 });
 
 /**
+ * ==============================
+ * PUBLIC — WALKER PROFILE
  * GET /api/walkers/:id
- * Public walker profile
+ * ==============================
  */
 router.get("/:id", async (req, res) => {
   const walkerId = Number(req.params.id);
@@ -59,18 +76,18 @@ router.get("/:id", async (req, res) => {
 
     const [addons] = await pool.query(
       "SELECT id, name, price FROM walker_addons WHERE walker_id = ?",
-      [walker.user_id]
+      [walkerId]
     );
 
     const [[rating]] = await pool.query(
       `
       SELECT 
-        COUNT(*) as count,
-        AVG(rating) as avg_rating
+        COUNT(*) AS count,
+        AVG(rating) AS avg_rating
       FROM reviews
       WHERE walker_id = ?
       `,
-      [walker.user_id]
+      [walkerId]
     );
 
     res.json({
@@ -86,92 +103,34 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-
 /**
- * GET /api/walkers/:id
- * Walker profile + avg rating + addons
+ * ==============================
+ * PUBLIC — WALKER AVAILABILITY
+ * GET /api/walkers/:id/availability
+ * ==============================
  */
-router.get("/:id", async (req, res) => {
-  const walkerId = Number(req.params.id);
-  if (!Number.isFinite(walkerId)) {
-    return res.status(400).json({ error: "Invalid id" });
-  }
-
-  try {
-    const [[walker]] = await pool.query(
-      "SELECT * FROM walkers WHERE id = ? AND is_banned = 0",
-      [walkerId]
-    );
-
-    if (!walker) return res.status(404).json({ error: "Walker not found" });
-
-    const [[rating]] = await pool.query(
-      "SELECT AVG(rating) AS avg_rating FROM reviews WHERE walker_id = ?",
-      [walkerId]
-    );
-
-    const [addons] = await pool.query(
-      "SELECT id, name, price FROM walker_addons WHERE walker_id = ?",
-      [walkerId]
-    );
-
-    res.json({
-      ...walker,
-      avg_rating: rating.avg_rating,
-      addons
-    });
-  } catch (e) {
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-/**
- * GET /api/walkers/:id/reviews
- */
-router.get("/:id/reviews", async (req, res) => {
-  const walkerId = Number(req.params.id);
-  if (!Number.isFinite(walkerId)) {
-    return res.status(400).json({ error: "Invalid id" });
-  }
-
-  try {
-    const [rows] = await pool.query(
-      `
-      SELECT r.rating, r.comment, r.created_at, u.name AS user_name
-      FROM reviews r
-      JOIN users u ON u.id = r.user_id
-      WHERE r.walker_id = ?
-      ORDER BY r.created_at DESC
-      `,
-      [walkerId]
-    );
-
-    res.json(rows);
-  } catch (e) {
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
 router.get("/:id/availability", async (req, res) => {
-  const { id } = req.params;
+  const walkerId = Number(req.params.id);
+
+  if (!Number.isFinite(walkerId)) {
+    return res.status(400).json({ error: "Invalid walker id" });
+  }
 
   try {
     const [rows] = await pool.query(
       `
-      SELECT id, date, start_time, end_time
+      SELECT date, start_time, end_time
       FROM walker_availability
       WHERE walker_id = ?
       ORDER BY date, start_time
       `,
-      [id]
+      [walkerId]
     );
 
     res.json(rows);
-  } catch (err) {
-    console.error(err);
+  } catch (e) {
     res.status(500).json({ error: "Failed to load availability" });
   }
 });
-
 
 module.exports = router;
