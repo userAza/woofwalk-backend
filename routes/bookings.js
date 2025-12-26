@@ -22,9 +22,11 @@ router.get("/", authRequired, async (req, res) => {
       b.end_time,
       b.status,
       b.created_at,
+      b.discount_percent,
       w.name AS walker_name,
+      w.price_per_30min,
       GROUP_CONCAT(DISTINCT d.name SEPARATOR ', ') AS dogs,
-      COALESCE(SUM(ba.price_snapshot), 0) + w.price_per_30min AS total_price,
+      COALESCE(SUM(ba.price_snapshot), 0) AS addons_total,
       GROUP_CONCAT(
         DISTINCT CONCAT(wa.name, ' (€', ba.price_snapshot, ')')
         SEPARATOR ', '
@@ -47,7 +49,25 @@ router.get("/", authRequired, async (req, res) => {
     [req.user.id]
   );
 
-  res.json(rows);
+  // Calculate total_price with discount
+  const processedRows = rows.map(row => {
+    const basePrice = Number(row.price_per_30min || 0);
+    const addonsTotal = Number(row.addons_total || 0);
+    let total = basePrice + addonsTotal;
+    
+    // Apply discount if exists
+    if (row.discount_percent) {
+      const discount = total * (row.discount_percent / 100);
+      total -= discount;
+    }
+    
+    return {
+      ...row,
+      total_price: total.toFixed(2)
+    };
+  });
+
+  res.json(processedRows);
 });
 
 /* ======================
@@ -131,12 +151,28 @@ router.post("/", authRequired, async (req, res) => {
       return res.status(400).json({ error: "Time slot already booked" });
     }
 
+    // Check if user has active subscription
+    let discountPercent = null;
+    try {
+      const [[subscription]] = await pool.query(
+        `SELECT discount_percent 
+         FROM user_subscriptions 
+         WHERE user_id = ? AND active_until >= NOW()`,
+        [req.user.id]
+      );
+      if (subscription) {
+        discountPercent = subscription.discount_percent;
+      }
+    } catch (e) {
+      console.error("Failed to check subscription:", e);
+    }
+
     const [result] = await pool.query(
       `
-      INSERT INTO bookings (user_id, walker_id, date, start_time, end_time, status)
-      VALUES (?, ?, ?, ?, ?, 'pending')
+      INSERT INTO bookings (user_id, walker_id, date, start_time, end_time, status, discount_percent)
+      VALUES (?, ?, ?, ?, ?, 'pending', ?)
       `,
-      [req.user.id, walker_id, date, start_time, end_time]
+      [req.user.id, walker_id, date, start_time, end_time, discountPercent]
     );
 
     const bookingId = result.insertId;
