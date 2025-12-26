@@ -8,7 +8,7 @@ router.get("/", async (req, res) => {
   const city = (req.query.city || "").trim();
 
   try {
-    let sql = "SELECT id, name, city, address, phone, maps_url, created_at FROM vets";
+    let sql = "SELECT id, name, city, address, phone, maps_url, latitude, longitude, created_at FROM vets";
     const params = [];
 
     if (city) {
