@@ -241,21 +241,59 @@ router.patch("/walker/:id/done", authRequired, async (req, res) => {
   const bookingId = toNumber(req.params.id);
   if (!bookingId) return res.status(400).json({ error: "Invalid id" });
 
-  const [result] = await pool.query(
-    `
-    UPDATE bookings
-    SET status = 'done'
-    WHERE id = ?
-      AND walker_id = (SELECT id FROM walkers WHERE user_id = ?)
-    `,
-    [bookingId, req.user.id]
-  );
+  try {
+    // Get booking info before updating
+    const [[booking]] = await pool.query(
+      `
+      SELECT user_id
+      FROM bookings
+      WHERE id = ?
+        AND walker_id = (SELECT id FROM walkers WHERE user_id = ?)
+      `,
+      [bookingId, req.user.id]
+    );
 
-  if (!result.affectedRows) {
-    return res.status(404).json({ error: "Booking not found or not yours" });
+    if (!booking) {
+      return res.status(404).json({ error: "Booking not found or not yours" });
+    }
+
+    // Mark as done
+    await pool.query(
+      "UPDATE bookings SET status = 'done' WHERE id = ?",
+      [bookingId]
+    );
+
+    // AUTO-SUBSCRIBE: Check if user has 10+ completed bookings
+    const [[stats]] = await pool.query(
+      `
+      SELECT COUNT(*) as completed_count
+      FROM bookings
+      WHERE user_id = ? AND status = 'done'
+      `,
+      [booking.user_id]
+    );
+
+    // If 10+ bookings, automatically grant subscription
+    if (stats.completed_count >= 10) {
+      const activeUntil = new Date();
+      activeUntil.setMonth(activeUntil.getMonth() + 1);
+
+      await pool.query(
+        `
+        INSERT INTO user_subscriptions (user_id, discount_percent, active_until)
+        VALUES (?, 20, ?)
+        ON DUPLICATE KEY UPDATE
+          discount_percent = 20,
+          active_until = ?
+        `,
+        [booking.user_id, activeUntil, activeUntil]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-
-  res.json({ success: true });
 });
 
 module.exports = router;
