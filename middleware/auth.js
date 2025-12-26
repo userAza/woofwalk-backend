@@ -20,4 +20,5 @@ function adminOnly(req, res, next) {
   next();
 }
 
+
 module.exports = { authRequired, adminOnly };
