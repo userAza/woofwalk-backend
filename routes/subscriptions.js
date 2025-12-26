@@ -4,9 +4,6 @@ const { authRequired, adminOnly } = require("../middleware/auth");
 
 const router = express.Router();
 
-/* ==============================
-   USER: Get My Subscription Status
-============================== */
 router.get("/my-subscription", authRequired, async (req, res) => {
   try {
     const [[sub]] = await pool.query(
@@ -34,9 +31,6 @@ router.get("/my-subscription", authRequired, async (req, res) => {
   }
 });
 
-/* ==============================
-   ADMIN: Get All Subscriptions
-============================== */
 router.get("/all", authRequired, adminOnly, async (req, res) => {
   try {
     const [rows] = await pool.query(
@@ -68,9 +62,6 @@ router.get("/all", authRequired, adminOnly, async (req, res) => {
   }
 });
 
-/* ==============================
-   ADMIN: Manually Grant Subscription
-============================== */
 router.post("/grant/:userId", authRequired, adminOnly, async (req, res) => {
   const userId = Number(req.params.userId);
   
@@ -99,9 +90,6 @@ router.post("/grant/:userId", authRequired, adminOnly, async (req, res) => {
   }
 });
 
-/* ==============================
-   ADMIN: Revoke Subscription
-============================== */
 router.delete("/revoke/:userId", authRequired, adminOnly, async (req, res) => {
   const userId = Number(req.params.userId);
   

@@ -6,10 +6,9 @@ const { authRequired } = require("../middleware/auth");
 
 const router = express.Router();
 
-// REGISTER
-// REGISTER
 router.post("/register", async (req, res) => {
   const { name, email, password } = req.body;
+  
   if (!name || !email || !password) {
     return res.status(400).json({ error: "Missing fields" });
   }
@@ -30,14 +29,12 @@ router.post("/register", async (req, res) => {
       [name, email, hash]
     );
 
-    // CREATE TOKEN (this was missing!)
     const token = jwt.sign(
       { id: result.insertId, role: 'user' },
       process.env.JWT_SECRET,
       { expiresIn: "8h" }
     );
 
-    // RETURN TOKEN + USER DATA
     res.status(201).json({ 
       token,
       user: { id: result.insertId, name, email, role: 'user' }
@@ -47,7 +44,6 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// LOGIN
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
@@ -87,7 +83,6 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// FORGOT PASSWORD - Request Reset
 router.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
 
@@ -141,12 +136,10 @@ router.post("/forgot-password", async (req, res) => {
 
     res.json({ message: "If email exists, reset link sent" });
   } catch (e) {
-    console.error("Forgot password error:", e);
     res.status(500).json({ error: "Failed to process request" });
   }
 });
 
-// RESET PASSWORD - Verify Token and Update
 router.post("/reset-password", async (req, res) => {
   const { token, newPassword } = req.body;
 
@@ -177,12 +170,10 @@ router.post("/reset-password", async (req, res) => {
 
     res.json({ message: "Password updated successfully" });
   } catch (e) {
-    console.error("Reset password error:", e);
     res.status(500).json({ error: "Failed to reset password" });
   }
 });
 
-// CHANGE PASSWORD (for logged-in users)
 router.post("/change-password", authRequired, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
 
@@ -219,10 +210,8 @@ router.post("/change-password", authRequired, async (req, res) => {
 
     res.json({ message: "Password changed successfully" });
   } catch (e) {
-    console.error("Change password error:", e);
     res.status(500).json({ error: "Failed to change password" });
   }
 });
-
 
 module.exports = router;

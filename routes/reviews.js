@@ -4,9 +4,6 @@ const { authRequired } = require("../middleware/auth");
 
 const router = express.Router();
 
-/* ==============================
-   CREATE REVIEW (USER ONLY)
-============================== */
 router.post("/", authRequired, async (req, res) => {
   const { booking_id, rating, comment } = req.body;
 
@@ -53,11 +50,9 @@ router.post("/", authRequired, async (req, res) => {
   }
 });
 
-/* ==============================
-   GET REVIEWS + AVG FOR WALKER
-============================== */
 router.get("/walker/:walkerId", async (req, res) => {
   const walkerId = Number(req.params.walkerId);
+  
   if (!Number.isFinite(walkerId)) {
     return res.status(400).json({ error: "Invalid walker id" });
   }

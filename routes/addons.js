@@ -4,7 +4,6 @@ const { authRequired } = require("../middleware/auth");
 
 const router = express.Router();
 
-// WALKER creates an addon
 router.post("/", authRequired, async (req, res) => {
   if (req.user.role !== "walker") {
     return res.status(403).json({ error: "Forbidden" });
@@ -37,7 +36,7 @@ router.post("/", authRequired, async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-// GET addons for a walker
+
 router.get("/walker/:walkerId", async (req, res) => {
   const walkerId = Number(req.params.walkerId);
 
@@ -59,6 +58,5 @@ router.get("/walker/:walkerId", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 
 module.exports = router;

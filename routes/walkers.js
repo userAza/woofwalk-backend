@@ -3,9 +3,6 @@ const pool = require("../db");
 
 const router = express.Router();
 
-/* ==============================
-   PUBLIC — SEARCH WALKERS
-============================== */
 router.get("/search", async (req, res) => {
   const { location, dogs, date, start_time, end_time } = req.query;
 
@@ -63,16 +60,13 @@ router.get("/search", async (req, res) => {
 
     res.json(rows);
   } catch (e) {
-    console.error(e);
     res.status(500).json({ error: e.message });
   }
 });
 
-/* ==============================
-   PUBLIC — WALKER PROFILE
-============================== */
 router.get("/:id", async (req, res) => {
   const walkerId = Number(req.params.id);
+  
   if (!Number.isFinite(walkerId)) {
     return res.status(400).json({ error: "Invalid walker id" });
   }
@@ -111,16 +105,13 @@ router.get("/:id", async (req, res) => {
 
     res.json({ walker, availability });
   } catch (e) {
-    console.error(e);
     res.status(500).json({ error: e.message });
   }
 });
 
-/* ==============================
-   PUBLIC — WALKER AVAILABILITY
-============================== */
 router.get("/:id/availability", async (req, res) => {
   const walkerId = Number(req.params.id);
+  
   if (!Number.isFinite(walkerId)) {
     return res.status(400).json({ error: "Invalid walker id" });
   }
@@ -141,7 +132,6 @@ router.get("/:id/availability", async (req, res) => {
 
     res.json(rows);
   } catch (e) {
-    console.error(e);
     res.status(500).json({ error: e.message });
   }
 });

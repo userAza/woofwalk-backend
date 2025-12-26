@@ -5,7 +5,6 @@ const dotenv = require("dotenv");
 const dogsRoutes = require("./routes/dogs");
 const bookingsRoutes = require("./routes/bookings");
 const authRoutes = require("./routes/auth");
-const pool = require("./db");
 const walkersRoutes = require("./routes/walkers");
 const profilesRoutes = require("./routes/profiles");
 const reviewsRoutes = require("./routes/reviews");
@@ -13,9 +12,7 @@ const addonsRoutes = require("./routes/addons");
 const vetsRoutes = require("./routes/vets");
 const subscriptionsRoutes = require("./routes/subscriptions");
 const adminRoutes = require("./routes/admin");
-const reviewsRouter = require("./routes/reviews");
-
-
+const pool = require("./db");
 
 dotenv.config();
 
@@ -34,9 +31,6 @@ app.use("/api/addons", addonsRoutes);
 app.use("/api/vets", vetsRoutes);
 app.use("/api/subscriptions", subscriptionsRoutes);
 app.use("/api/admin", adminRoutes);
-app.use("/api/reviews", reviewsRouter);
-
-
 
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });

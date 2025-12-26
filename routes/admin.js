@@ -4,7 +4,6 @@ const { authRequired, adminOnly } = require("../middleware/auth");
 
 const router = express.Router();
 
-/* USERS */
 router.get("/users", authRequired, adminOnly, async (req, res) => {
   const [rows] = await pool.query(
     "SELECT id, name, email, role, subscription_active, is_banned FROM users"
@@ -30,7 +29,6 @@ router.patch("/users/:id/unban", authRequired, adminOnly, async (req, res) => {
   res.json({ success: true });
 });
 
-/* WALKERS */
 router.get("/walkers", authRequired, adminOnly, async (req, res) => {
   const [rows] = await pool.query(
     "SELECT id, name, location, price_per_30min, is_banned FROM walkers"
@@ -48,7 +46,6 @@ router.patch("/walkers/:id/unban", authRequired, adminOnly, async (req, res) => 
   res.json({ success: true });
 });
 
-/* BOOKINGS */
 router.get("/bookings", authRequired, adminOnly, async (req, res) => {
   const [rows] = await pool.query(`
     SELECT 

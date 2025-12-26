@@ -4,7 +4,6 @@ const { authRequired } = require("../middleware/auth");
 
 const router = express.Router();
 
-// GET all dogs for logged-in user
 router.get("/", authRequired, async (req, res) => {
   try {
     const [rows] = await pool.query(
@@ -17,7 +16,6 @@ router.get("/", authRequired, async (req, res) => {
   }
 });
 
-// POST create dog
 router.post("/", authRequired, async (req, res) => {
   const { name, breed, age, notes } = req.body;
 
@@ -37,7 +35,6 @@ router.post("/", authRequired, async (req, res) => {
   }
 });
 
-// DELETE dog (only owner) + blocks if dog is used in bookings
 router.delete("/:id", authRequired, async (req, res) => {
   const dogId = Number(req.params.id);
 
@@ -46,7 +43,6 @@ router.delete("/:id", authRequired, async (req, res) => {
   }
 
   try {
-    // check ownership
     const [dogs] = await pool.query(
       "SELECT id FROM dogs WHERE id = ? AND user_id = ?",
       [dogId, req.user.id]
@@ -55,7 +51,6 @@ router.delete("/:id", authRequired, async (req, res) => {
       return res.status(404).json({ error: "Dog not found" });
     }
 
-    // block delete if bookings exist
     const [bookings] = await pool.query(
       "SELECT 1 FROM booking_dogs WHERE dog_id = ? LIMIT 1",
       [dogId]
@@ -74,7 +69,6 @@ router.delete("/:id", authRequired, async (req, res) => {
   }
 });
 
-// PATCH update dog (only owner)
 router.patch("/:id", authRequired, async (req, res) => {
   const dogId = Number(req.params.id);
   const { name, breed, age, notes } = req.body;
@@ -106,6 +100,5 @@ router.patch("/:id", authRequired, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-
 
 module.exports = router;

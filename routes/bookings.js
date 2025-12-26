@@ -9,9 +9,6 @@ function toNumber(x) {
   return Number.isFinite(n) ? n : null;
 }
 
-/* ======================
-   USER – SEE OWN BOOKINGS
-====================== */
 router.get("/", authRequired, async (req, res) => {
   const [rows] = await pool.query(
     `
@@ -49,13 +46,11 @@ router.get("/", authRequired, async (req, res) => {
     [req.user.id]
   );
 
-  // Calculate total_price with discount
   const processedRows = rows.map(row => {
     const basePrice = Number(row.price_per_30min || 0);
     const addonsTotal = Number(row.addons_total || 0);
     let total = basePrice + addonsTotal;
     
-    // Apply discount if exists
     if (row.discount_percent) {
       const discount = total * (row.discount_percent / 100);
       total -= discount;
@@ -70,9 +65,6 @@ router.get("/", authRequired, async (req, res) => {
   res.json(processedRows);
 });
 
-/* ======================
-   USER – CREATE BOOKING
-====================== */
 router.post("/", authRequired, async (req, res) => {
   const { walker_id, date, start_time, end_time, dog_ids, addon_ids } = req.body;
 
@@ -88,7 +80,6 @@ router.post("/", authRequired, async (req, res) => {
   }
 
   try {
-    // block banned user
     const [[user]] = await pool.query(
       "SELECT is_banned FROM users WHERE id = ?",
       [req.user.id]
@@ -97,7 +88,6 @@ router.post("/", authRequired, async (req, res) => {
       return res.status(403).json({ error: "User is banned" });
     }
 
-    // block banned walker
     const [[walker]] = await pool.query(
       "SELECT is_banned FROM walkers WHERE id = ?",
       [walker_id]
@@ -106,7 +96,6 @@ router.post("/", authRequired, async (req, res) => {
       return res.status(403).json({ error: "Walker unavailable" });
     }
 
-    // validate dogs
     const [dogs] = await pool.query(
       `SELECT id FROM dogs WHERE user_id = ? AND id IN (${dog_ids
         .map(() => "?")
@@ -117,7 +106,6 @@ router.post("/", authRequired, async (req, res) => {
       return res.status(403).json({ error: "One or more dogs are not yours" });
     }
 
-    // check availability window
     const [[slot]] = await pool.query(
       `
       SELECT 1
@@ -134,7 +122,6 @@ router.post("/", authRequired, async (req, res) => {
       return res.status(400).json({ error: "Time outside availability" });
     }
 
-    // prevent overlapping accepted bookings
     const [[conflict]] = await pool.query(
       `
       SELECT 1
@@ -151,7 +138,6 @@ router.post("/", authRequired, async (req, res) => {
       return res.status(400).json({ error: "Time slot already booked" });
     }
 
-    // Check if user has active subscription
     let discountPercent = null;
     try {
       const [[subscription]] = await pool.query(
@@ -164,7 +150,6 @@ router.post("/", authRequired, async (req, res) => {
         discountPercent = subscription.discount_percent;
       }
     } catch (e) {
-      console.error("Failed to check subscription:", e);
     }
 
     const [result] = await pool.query(
@@ -182,7 +167,6 @@ router.post("/", authRequired, async (req, res) => {
       [dog_ids.map((d) => [bookingId, d])]
     );
 
-    // addons (optional)
     if (Array.isArray(addon_ids) && addon_ids.length > 0) {
       const [addons] = await pool.query(
         `SELECT id, price FROM walker_addons
@@ -209,11 +193,9 @@ router.post("/", authRequired, async (req, res) => {
   }
 });
 
-/* ======================
-   USER – CANCEL BOOKING
-====================== */
 router.patch("/:id/cancel", authRequired, async (req, res) => {
   const bookingId = toNumber(req.params.id);
+  
   if (!bookingId) return res.status(400).json({ error: "Invalid id" });
 
   const [result] = await pool.query(
@@ -232,9 +214,6 @@ router.patch("/:id/cancel", authRequired, async (req, res) => {
   res.json({ success: true });
 });
 
-/* ======================
-   WALKER – SEE OWN BOOKINGS
-====================== */
 router.get("/walker", authRequired, async (req, res) => {
   if (req.user.role !== "walker") {
     return res.status(403).json({ error: "Forbidden" });
@@ -266,9 +245,6 @@ router.get("/walker", authRequired, async (req, res) => {
   res.json(rows);
 });
 
-/* ======================
-   WALKER – MARK DONE
-====================== */
 router.patch("/walker/:id/done", authRequired, async (req, res) => {
   if (req.user.role !== "walker") {
     return res.status(403).json({ error: "Forbidden" });
@@ -278,7 +254,6 @@ router.patch("/walker/:id/done", authRequired, async (req, res) => {
   if (!bookingId) return res.status(400).json({ error: "Invalid id" });
 
   try {
-    // Get booking info before updating
     const [[booking]] = await pool.query(
       `
       SELECT user_id
@@ -293,13 +268,11 @@ router.patch("/walker/:id/done", authRequired, async (req, res) => {
       return res.status(404).json({ error: "Booking not found or not yours" });
     }
 
-    // Mark as done
     await pool.query(
       "UPDATE bookings SET status = 'done' WHERE id = ?",
       [bookingId]
     );
 
-    // AUTO-SUBSCRIBE: Check if user has 10+ completed bookings
     const [[stats]] = await pool.query(
       `
       SELECT COUNT(*) as completed_count
@@ -309,7 +282,6 @@ router.patch("/walker/:id/done", authRequired, async (req, res) => {
       [booking.user_id]
     );
 
-    // If 10+ bookings, automatically grant subscription
     if (stats.completed_count >= 10) {
       const activeUntil = new Date();
       activeUntil.setMonth(activeUntil.getMonth() + 1);
